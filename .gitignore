@@ -2,6 +2,10 @@
 #
 .DS_Store
 
+# Vim swap files
+*.swp
+*.swo
+
 # XDE
 .expo/
 
@@ -57,6 +61,7 @@ yarn-error.log
 # BUCK
 buck-out/
 \.buckd/
+android/libs
 android/app/libs
 android/keystores/debug.keystore
 

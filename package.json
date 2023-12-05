@@ -1,6 +1,6 @@
 {
-  "name": "react-native-jeefo_webrtc_library",
-  "version": "0.1.0",
+  "name": "jeefo_webrtc",
+  "version": "0.0.1",
   "description": "jeefo webrtc",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -77,7 +77,8 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "expo": "^49.0.21"
   },
   "workspaces": [
     "example"
@@ -150,13 +151,7 @@
     "output": "lib",
     "targets": [
       "commonjs",
-      "module",
-      [
-        "typescript",
-        {
-          "project": "tsconfig.build.json"
-        }
-      ]
+      "module"
     ]
   }
 }
