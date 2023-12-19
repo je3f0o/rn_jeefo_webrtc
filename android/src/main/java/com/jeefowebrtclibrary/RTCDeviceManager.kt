@@ -8,7 +8,9 @@ object RTCDeviceManager {
   var isCameraActivated = false
   lateinit var mediaStream: MediaStream
   private var localVideoTrack: VideoTrack? = null
+  private var localAudioTrack: AudioTrack? = null
   private lateinit var cameraVideoCapturer: CameraVideoCapturer
+  private lateinit var audioSource: AudioSource
 
   fun activateCamera(context: ReactApplicationContext) {
     if (isCameraActivated) return
@@ -16,17 +18,24 @@ object RTCDeviceManager {
     val peerConnectionFactory = getPeerConnectionFactory()
     cameraVideoCapturer = createCameraVideoCapturer(context)
 
+    // Video setup
     val localVideoSource = peerConnectionFactory.createVideoSource(false)
-    localVideoTrack = peerConnectionFactory.createVideoTrack("local_video_track", localVideoSource)
     val textureHelper = SurfaceTextureHelper.create("CameraVideoCapturerThread", eglBaseContext)
+    localVideoTrack = peerConnectionFactory.createVideoTrack("local_video_track", localVideoSource)
     cameraVideoCapturer.initialize(textureHelper, context, localVideoSource.capturerObserver)
     cameraVideoCapturer.startCapture(640, 480, 30)
 
+    // Audio setup
+    audioSource = peerConnectionFactory.createAudioSource(RTCService.mediaConstraint)
+    localAudioTrack = peerConnectionFactory.createAudioTrack("local_audio_track", audioSource)
+
+    // Media stream setup
     mediaStream = RTCService.peerConnectionFactory.createLocalMediaStream("local_camera")
     mediaStream.addTrack(localVideoTrack)
+    mediaStream.addTrack(localAudioTrack)
 
     isCameraActivated = true
-    Log.d(TAG, "RTCDeviceManager activated camera successfully.")
+    Log.d(TAG, "RTCDeviceManager camera and mic activated successfully.")
   }
 
   fun switchCamera() {
@@ -36,6 +45,7 @@ object RTCDeviceManager {
   @Suppress("unused")
   fun release() {
     localVideoTrack?.dispose()
+    localAudioTrack?.dispose()
   }
 
   private fun getPeerConnectionFactory(): PeerConnectionFactory {
