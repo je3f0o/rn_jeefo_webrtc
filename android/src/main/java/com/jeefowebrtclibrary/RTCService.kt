@@ -2,50 +2,55 @@ package com.jeefowebrtclibrary
 
 import android.util.Log
 import com.facebook.react.bridge.ReactApplicationContext
+import com.signaller.RTCSignaller
+import com.signaller.VideoRoomPlugin
+import org.json.JSONObject
 import org.webrtc.*
 
 object RTCService {
   private var isInitialized = false
   lateinit var peerConnectionFactory: PeerConnectionFactory
+  var signaller: RTCSignaller? = null
 
   val mediaConstraint = MediaConstraints().apply {
     mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
     mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
-    mandatory.add(MediaConstraints.KeyValuePair("RtpDataChannels", "true"))
+    mandatory.add(MediaConstraints.KeyValuePair("iceRestart", "true"))
 
+    optional.add(MediaConstraints.KeyValuePair("RtpDataChannels", "true"))
     optional.add(MediaConstraints.KeyValuePair("DtlsSrtpKeyAgreement", "true"))
     optional.add(MediaConstraints.KeyValuePair("internalSctpDataChannels", "true"))
-    optional.add(MediaConstraints.KeyValuePair("iceRestart", "true"))
     optional.add(MediaConstraints.KeyValuePair("googCpuOveruseDetection", "true"))
     optional.add(MediaConstraints.KeyValuePair("googCpuOveruseDetectionThreshold", "true"))
   }
 
   fun initializePeerConnectionFactory(reactContext: ReactApplicationContext) {
-    if (!isInitialized) {
-      val initializationOptions = PeerConnectionFactory
-        .InitializationOptions
-        .builder(reactContext.applicationContext)
+//    if (isInitialized) return
+
+    val initializationOptions = PeerConnectionFactory
+      .InitializationOptions
+      .builder(reactContext.applicationContext)
 //        .setEnableInternalTracer(true)
 //        .setFieldTrials("WebRTC-H264HighProfile/Enabled/")
-        .createInitializationOptions()
-      PeerConnectionFactory.initialize(initializationOptions)
-      isInitialized = true
+      .createInitializationOptions()
+    PeerConnectionFactory.initialize(initializationOptions)
+    isInitialized = true
 
-      val encoder = DefaultVideoEncoderFactory(eglBaseContext, true, true)
-      val decoder = DefaultVideoDecoderFactory(eglBaseContext)
-      peerConnectionFactory = PeerConnectionFactory
-        .builder()
-        .setVideoDecoderFactory(decoder)
-        .setVideoEncoderFactory(encoder)
-        .createPeerConnectionFactory()
+    val encoder = DefaultVideoEncoderFactory(eglBaseContext, true, true)
+    val decoder = DefaultVideoDecoderFactory(eglBaseContext)
+    peerConnectionFactory = PeerConnectionFactory
+      .builder()
+      .setVideoDecoderFactory(decoder)
+      .setVideoEncoderFactory(encoder)
+      .createPeerConnectionFactory()
 
-      for (codec in encoder.supportedCodecs) {
-        Log.d(TAG, "Supported encoder codec: ${codec.name}, params: ${codec.params}")
-      }
-      for (codec in decoder.supportedCodecs) {
-        Log.d(TAG, "Supported decoder codec: ${codec.name}, params: ${codec.params}")
-      }
+    for (codec in encoder.supportedCodecs) {
+      Log.d(TAG, "Supported encoder codec: ${codec.name}, params: ${codec.params}")
     }
+    for (codec in decoder.supportedCodecs) {
+      Log.d(TAG, "Supported decoder codec: ${codec.name}, params: ${codec.params}")
+    }
+    Log.w(TAG, "Initialized PeerConnectionFactory")
   }
 
   fun createPeerConnection(rtcPeer: RTCPeer): Boolean {
@@ -61,10 +66,18 @@ object RTCService {
         .setPassword("free")
         .createIceServer()
     )
+//    val iceServers = emptyList<PeerConnection.IceServer>()
     val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
     rtcConfig.sdpSemantics      = PeerConnection.SdpSemantics.UNIFIED_PLAN
     rtcConfig.rtcpMuxPolicy     = PeerConnection.RtcpMuxPolicy.REQUIRE
     rtcConfig.iceTransportsType = PeerConnection.IceTransportsType.ALL
+
+    rtcConfig.tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
+    rtcConfig.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+    rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+    rtcConfig.keyType = PeerConnection.KeyType.ECDSA
+    rtcConfig.enableDtlsSrtp = true
+    rtcConfig.enableRtpDataChannel = true
 
     val observer = makePeerConnectionObserver(rtcPeer)
     rtcPeer.peer = peerConnectionFactory.createPeerConnection(rtcConfig, observer)!!
@@ -80,6 +93,11 @@ object RTCService {
 
       override fun onIceConnectionChange(e: PeerConnection.IceConnectionState?) {
         Log.d(TAG, "onIceConnectionChange: $e")
+        when (e) {
+          PeerConnection.IceConnectionState.CONNECTED -> {}
+          PeerConnection.IceConnectionState.DISCONNECTED -> {}
+          else -> {}
+        }
       }
 
       override fun onIceConnectionReceivingChange(e: Boolean) {
@@ -92,6 +110,7 @@ object RTCService {
 
       override fun onIceCandidate(candidate: IceCandidate?) {
         Log.d(TAG, "onIceCandidate: $candidate")
+        sendIceCandidate(candidate)
       }
 
       override fun onIceCandidatesRemoved(e: Array<out IceCandidate>?) {
@@ -116,7 +135,7 @@ object RTCService {
 
       override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {
         Log.d(TAG, "onAddTrack: $receiver, $streams")
-        val recvTrack  = receiver?.track() ?: return
+        val recvTrack   = receiver?.track() ?: return
         val inputStream = streams?.first() ?: return
         val mediaStream = getStreamByReceiverID(receiver.id(), rtcPeer) ?: return
 
@@ -143,5 +162,26 @@ object RTCService {
 
     for (s in rtcPeer.streams.values) if (s.mids.contains(mid)) return s.mediaStream
     return null
+  }
+
+  private fun sendIceCandidate(candidate: IceCandidate?) {
+    val plugin = signaller?.findPluginByName("video_room") as VideoRoomPlugin
+    val data = JSONObject().apply {
+      put("janus", "trickle")
+      put("session_id", signaller?.sessionId)
+      put("transaction", signaller?.transactionId)
+      put("handle_id", plugin.publisherId)
+    }
+
+    if (candidate == null) {
+      data.put("candidate", null)
+    } else {
+      data.put("candidate", JSONObject().apply {
+        put("sdpMid", candidate.sdpMid)
+        put("sdpMLineIndex", candidate.sdpMLineIndex)
+        put("candidate", candidate.sdp)
+      })
+    }
+//    signaller?.send(data)
   }
 }

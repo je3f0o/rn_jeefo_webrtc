@@ -6,11 +6,11 @@ import org.webrtc.*
 
 object RTCDeviceManager {
   var isCameraActivated = false
-  lateinit var mediaStream: MediaStream
+  var mediaStream: MediaStream? = null
   private var localVideoTrack: VideoTrack? = null
   private var localAudioTrack: AudioTrack? = null
-  private lateinit var cameraVideoCapturer: CameraVideoCapturer
-  private lateinit var audioSource: AudioSource
+  private var cameraVideoCapturer: CameraVideoCapturer? = null
+  private var audioSource: AudioSource? = null
 
   fun activateCamera(context: ReactApplicationContext) {
     if (isCameraActivated) return
@@ -22,8 +22,8 @@ object RTCDeviceManager {
     val localVideoSource = peerConnectionFactory.createVideoSource(false)
     val textureHelper = SurfaceTextureHelper.create("CameraVideoCapturerThread", eglBaseContext)
     localVideoTrack = peerConnectionFactory.createVideoTrack("local_video_track", localVideoSource)
-    cameraVideoCapturer.initialize(textureHelper, context, localVideoSource.capturerObserver)
-    cameraVideoCapturer.startCapture(640, 480, 30)
+    cameraVideoCapturer?.initialize(textureHelper, context, localVideoSource.capturerObserver)
+    cameraVideoCapturer?.startCapture(640, 480, 30)
 
     // Audio setup
     audioSource = peerConnectionFactory.createAudioSource(RTCService.mediaConstraint)
@@ -31,21 +31,32 @@ object RTCDeviceManager {
 
     // Media stream setup
     mediaStream = RTCService.peerConnectionFactory.createLocalMediaStream("local_camera")
-    mediaStream.addTrack(localVideoTrack)
-    mediaStream.addTrack(localAudioTrack)
+    mediaStream?.addTrack(localVideoTrack)
+    mediaStream?.addTrack(localAudioTrack)
 
     isCameraActivated = true
-    Log.d(TAG, "RTCDeviceManager camera and mic activated successfully.")
+    Log.d(TAG, "Camera activated!")
   }
 
   fun switchCamera() {
-    cameraVideoCapturer.switchCamera(null)
+    cameraVideoCapturer?.switchCamera(null)
   }
 
-  @Suppress("unused")
   fun release() {
     localVideoTrack?.dispose()
     localAudioTrack?.dispose()
+    if (audioSource != null) {
+      audioSource?.dispose()
+      audioSource = null
+    }
+    if (cameraVideoCapturer != null) {
+      cameraVideoCapturer?.dispose()
+      cameraVideoCapturer = null
+    }
+    localVideoTrack = null
+    localAudioTrack = null
+    mediaStream     = null
+    isCameraActivated = false
   }
 
   private fun getPeerConnectionFactory(): PeerConnectionFactory {

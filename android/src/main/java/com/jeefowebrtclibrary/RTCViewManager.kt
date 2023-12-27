@@ -11,6 +11,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
+import com.signaller.RTCEventEmitter
 import org.webrtc.MediaStream
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -24,8 +25,12 @@ class RTCViewManager : SimpleViewManager<View>() {
 
   private lateinit var context: ReactApplicationContext
   private lateinit var container: ViewGroup
-  private var peerFeedName = "NO_FEED"
-  private var streamName = "NO_NAME"
+  private var peerName = "NO_PEER"
+  private var feedId   = 0L
+
+  private var mediaStream: MediaStream? = null
+
+  private var listener: RendererCommon.RendererEvents? = null
 
   override fun createViewInstance(reactContext: ThemedReactContext): View {
     context = reactContext.reactApplicationContext
@@ -37,13 +42,17 @@ class RTCViewManager : SimpleViewManager<View>() {
       FrameLayout.LayoutParams.WRAP_CONTENT,
       Gravity.CENTER
     )
-    videoView.init(eglBaseContext, object: RendererCommon.RendererEvents {
+    listener = object: RendererCommon.RendererEvents {
       override fun onFirstFrameRendered() {}
       override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
-        Log.i(TAG, "$streamName videoWidth: $width, videoHeight: $height")
+        RTCModule.getPeer(peerName)?.streams?.get(feedId)?.resolution.let {
+          it?.width  = width.toLong()
+          it?.height = height.toLong()
+        }
         updateView()
       }
-    })
+    }
+    videoView.init(eglBaseContext, listener)
 
     container = FrameLayout(reactContext)
     container.setBackgroundColor(Color.BLACK)
@@ -52,42 +61,49 @@ class RTCViewManager : SimpleViewManager<View>() {
     return container
   }
 
-  @Suppress("unused", "UNUSED_PARAMETER")
-  @ReactProp(name = "peerName")
-  fun setFeedName(view: View, value: String?) {
-    var peerName = value ?: return
-    var feedName = "NO_FEED"
-    val stream: MediaStream
-    peerFeedName = value
+  override fun onDropViewInstance(view: View) {
+    super.onDropViewInstance(view)
+    mediaStream?.videoTracks?.firstOrNull()?.removeSink(videoView)
+    mediaStream?.videoTracks?.firstOrNull()?.removeSink(videoView)
+    videoView.release()
+    Log.w(TAG, "View $peerName fucking released...")
+  }
 
-    when (peerName) {
+  @Suppress("unused", "UNUSED_PARAMETER")
+  @ReactProp(name = "feedName")
+  fun setFeedName(view: View, value: String?) {
+    if (value == null) return
+
+    when (value) {
       "local" -> {
         if (!RTCDeviceManager.isCameraActivated) {
           RTCDeviceManager.activateCamera(context)
         }
-        stream = RTCDeviceManager.mediaStream
-      }
-      "remote" -> {
-        val rtcPeer = RTCModule.getPeer(peerName) ?: return
-        stream = rtcPeer.streams[peerName]!!.mediaStream
+        peerName = "local"
+        mediaStream = RTCDeviceManager.mediaStream
+        if (mediaStream != null) {
+          mediaStream!!.videoTracks.firstOrNull()?.addSink(videoView)
+        } else {
+          RTCEventEmitter.error("WTF???????????????????????????????")
+        }
       }
       else -> {
-        val p = splitByLastColon(peerName) ?: return
+        val p = splitByLastColon(value) ?: return
         peerName = p.first
-        feedName = p.second
-        val rtcPeer = RTCModule.getPeer(peerName) ?: return
-        stream = rtcPeer.streams[feedName]!!.mediaStream
+        feedId   = p.second.toLong()
+        val rtcPeer = RTCModule.getPeer(peerName)
+          ?: return RTCEventEmitter.error("Peer: '$peerName' not found.")
+        mediaStream = rtcPeer.streams[feedId]!!.mediaStream
+          ?: return RTCEventEmitter.error("Stream feed: '$feedId' not found in '$peerName' peer.")
+        mediaStream!!.videoTracks.firstOrNull()?.addSink(videoView)
       }
     }
-    streamName = stream.id
-    stream.videoTracks.firstOrNull()?.addSink(videoView)
-    Log.d(TAG, "SINKED Peer: $peerName, Feed: $feedName, A tracks: ${stream.audioTracks.size}, V tracks: ${stream.videoTracks.size} --------------------------------")
   }
 
   @Suppress("unused", "UNUSED_PARAMETER")
   @ReactProp(name = "side")
   fun setSide(view: View, value: String?) {
-    if (peerFeedName != "local") return
+    if (peerName != "local") return
     val side = value ?: return
     when (side.lowercase()) {
       "back" -> {
@@ -103,7 +119,7 @@ class RTCViewManager : SimpleViewManager<View>() {
   private fun splitByLastColon(input: String): Pair<String, String>? {
     val lastColonIndex = input.lastIndexOf(':')
     return if (lastColonIndex != -1 && lastColonIndex != input.length - 1) {
-      val firstPart = input.substring(0, lastColonIndex)
+      val firstPart  = input.substring(0, lastColonIndex)
       val secondPart = input.substring(lastColonIndex + 1)
       Pair(firstPart, secondPart)
     } else {
@@ -112,8 +128,15 @@ class RTCViewManager : SimpleViewManager<View>() {
   }
 
   private fun updateView() {
-    context
+    val jsModule = context
       .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-      .emit("update_view", peerFeedName)
+
+    if (peerName == "local") {
+      jsModule.emit("update_view", peerName)
+    } else {
+      Log.w(TAG, "updateView $peerName ------------------------------")
+      jsModule.emit("update_view", "$peerName:$feedId")
+      RTCModule.syncSubscriberFeeds()
+    }
   }
 }

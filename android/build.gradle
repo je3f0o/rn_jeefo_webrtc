@@ -104,5 +104,9 @@ dependencies {
   implementation "com.facebook.react:react-native:+"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation 'org.webrtc:google-webrtc:1.0.+'
+//  implementation "org.java-websocket:Java-WebSocket:1.5.1"
+//  implementation "io.ktor:ktor-client-core:1.6.1"
+//  implementation "io.ktor:ktor-client-websockets:1.6.1"
+  implementation 'com.squareup.okhttp3:okhttp:4.9.1'
 }
 
