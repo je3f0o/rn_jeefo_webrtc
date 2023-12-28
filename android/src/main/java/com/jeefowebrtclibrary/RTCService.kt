@@ -2,6 +2,7 @@ package com.jeefowebrtclibrary
 
 import android.util.Log
 import com.facebook.react.bridge.ReactApplicationContext
+import com.signaller.RTCEventEmitter
 import com.signaller.RTCSignaller
 import com.signaller.VideoRoomPlugin
 import org.json.JSONObject
@@ -94,8 +95,9 @@ object RTCService {
       override fun onIceConnectionChange(e: PeerConnection.IceConnectionState?) {
         Log.d(TAG, "onIceConnectionChange: $e")
         when (e) {
-          PeerConnection.IceConnectionState.CONNECTED -> {}
-          PeerConnection.IceConnectionState.DISCONNECTED -> {}
+          PeerConnection.IceConnectionState.DISCONNECTED -> {
+            RTCEventEmitter.event("disconnected", JSONObject())
+          }
           else -> {}
         }
       }
@@ -109,8 +111,8 @@ object RTCService {
       }
 
       override fun onIceCandidate(candidate: IceCandidate?) {
-        Log.d(TAG, "onIceCandidate: $candidate")
-        sendIceCandidate(candidate)
+        Log.d(TAG, "onIceCandidate: $candidate, $rtcPeer")
+        sendIceCandidate(rtcPeer, candidate)
       }
 
       override fun onIceCandidatesRemoved(e: Array<out IceCandidate>?) {
@@ -164,13 +166,17 @@ object RTCService {
     return null
   }
 
-  private fun sendIceCandidate(candidate: IceCandidate?) {
+  private fun sendIceCandidate(rtcPeer: RTCPeer, candidate: IceCandidate?) {
     val plugin = signaller?.findPluginByName("video_room") as VideoRoomPlugin
     val data = JSONObject().apply {
       put("janus", "trickle")
       put("session_id", signaller?.sessionId)
       put("transaction", signaller?.transactionId)
-      put("handle_id", plugin.publisherId)
+    }
+    if (rtcPeer.name == "publisher") {
+      data.put("handle_id", plugin.publisherId)
+    } else {
+      data.put("handle_id", plugin.subscriberId)
     }
 
     if (candidate == null) {
@@ -182,6 +188,6 @@ object RTCService {
         put("candidate", candidate.sdp)
       })
     }
-//    signaller?.send(data)
+    signaller?.send(data)
   }
 }

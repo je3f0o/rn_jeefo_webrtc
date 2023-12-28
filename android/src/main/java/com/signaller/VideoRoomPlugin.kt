@@ -20,8 +20,8 @@ class VideoRoomPlugin(signaller: RTCSignaller, transactionId: String):
   private var privateId    = 0L
   var publisherId  = 0L
     private set
-  private var subscriberId = 0L
-//    private set
+  var subscriberId = 0L
+    private set
 
   init {
     signaller.send(JSONObject().apply {

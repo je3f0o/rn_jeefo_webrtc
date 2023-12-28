@@ -73,10 +73,11 @@ class Signaller extends EventEmitter {
 export const signaller = new Signaller();
 
 export const RTCView = properties => {
-  const [side, set_side] = useState("front");
+  const [side, set_side] = useState(properties.side || "front");
   const [style, set_style] = useState({width: 0, height: 0});
   const props = Object.assign({}, properties);
   const {feedName} = props;
+  delete props.side;
   delete props.feedName;
 
   props.style = {};
@@ -93,16 +94,11 @@ export const RTCView = properties => {
     raf_id = requestAnimationFrame(() => {
       set_style({width: '100%', height: '100%'});
     });
-    set_side("back");
   });
-
-  //setInterval(() => {
-  //  set_side(s => s === "back" ? "front" : "back");
-  //}, 5000);
 
   return (
     <View {...props}>
-      <RTCViewNative feedName={feedName} style={style} />
+      <RTCViewNative feedName={feedName} style={style} side={side} />
     </View>
   );
 };

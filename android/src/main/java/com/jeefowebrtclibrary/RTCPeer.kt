@@ -29,14 +29,9 @@ class RTCPublisher(val id: Long) {
   }
 }
 
-class RTCPeer(name: String) {
-  private var name: String
+class RTCPeer(var name: String) {
   var peer: PeerConnection by Delegates.notNull()
   val streams: MutableMap<Long, RTCPublisher> = mutableMapOf()
-
-  init {
-    this.name = name
-  }
 
   fun toJSON(): JSONArray {
     val result = JSONArray()

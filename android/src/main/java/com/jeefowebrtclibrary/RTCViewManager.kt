@@ -25,12 +25,10 @@ class RTCViewManager : SimpleViewManager<View>() {
 
   private lateinit var context: ReactApplicationContext
   private lateinit var container: ViewGroup
+  private var side     = "front"
   private var peerName = "NO_PEER"
   private var feedId   = 0L
-
   private var mediaStream: MediaStream? = null
-
-  private var listener: RendererCommon.RendererEvents? = null
 
   override fun createViewInstance(reactContext: ThemedReactContext): View {
     context = reactContext.reactApplicationContext
@@ -42,7 +40,7 @@ class RTCViewManager : SimpleViewManager<View>() {
       FrameLayout.LayoutParams.WRAP_CONTENT,
       Gravity.CENTER
     )
-    listener = object: RendererCommon.RendererEvents {
+    videoView.init(eglBaseContext, object: RendererCommon.RendererEvents {
       override fun onFirstFrameRendered() {}
       override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
         RTCModule.getPeer(peerName)?.streams?.get(feedId)?.resolution.let {
@@ -51,8 +49,7 @@ class RTCViewManager : SimpleViewManager<View>() {
         }
         updateView()
       }
-    }
-    videoView.init(eglBaseContext, listener)
+    })
 
     container = FrameLayout(reactContext)
     container.setBackgroundColor(Color.BLACK)
@@ -102,18 +99,17 @@ class RTCViewManager : SimpleViewManager<View>() {
 
   @Suppress("unused", "UNUSED_PARAMETER")
   @ReactProp(name = "side")
-  fun setSide(view: View, value: String?) {
-    if (peerName != "local") return
-    val side = value ?: return
-    when (side.lowercase()) {
-      "back" -> {
+  fun setSide(view: View, input: String?) {
+    if (peerName != "local" || input == null) return
+    val value = input.lowercase()
+    if (side == value) return
+    when (value) {
+      "back", "front" -> {
         RTCDeviceManager.switchCamera()
-      }
-      "front" -> {
-        RTCDeviceManager.switchCamera()
+        side = value
+        updateView()
       }
     }
-    updateView()
   }
 
   private fun splitByLastColon(input: String): Pair<String, String>? {
@@ -134,7 +130,7 @@ class RTCViewManager : SimpleViewManager<View>() {
     if (peerName == "local") {
       jsModule.emit("update_view", peerName)
     } else {
-      Log.w(TAG, "updateView $peerName ------------------------------")
+      Log.w(TAG, "updateView $peerName:$feedId ------------------------------")
       jsModule.emit("update_view", "$peerName:$feedId")
       RTCModule.syncSubscriberFeeds()
     }

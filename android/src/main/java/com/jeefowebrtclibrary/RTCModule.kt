@@ -247,16 +247,6 @@ class RTCModule(reactContext: ReactApplicationContext):
     }
   }
 
-//  @ReactMethod
-//  fun getFeeds(peerName: String, promise: Promise) {
-//    val peer = peers[peerName] ?: return
-//    val feedsArray: WritableArray = Arguments.createArray()
-//    for (feed in peer.streams.keys) {
-//      feedsArray.pushString(feed)
-//    }
-//    promise.resolve(feedsArray)
-//  }
-
   @ReactMethod
   fun destroy() {
     RTCDeviceManager.release()
